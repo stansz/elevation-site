@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Elevation — ogsapps</title>
+  <link rel="icon" type="image/jpeg" href="https://ogsapps.cc/logo.jpg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #12131a;
+      color: #e8eaf0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Header */
+    .header {
+      display: flex; align-items: center; gap: 0.8rem;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid #1e2030;
+      background: #12131aee;
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+    }
+    .header a { text-decoration: none; color: #5a6; font-size: 1.2rem; transition: color 0.2s; }
+    .header a:hover { color: #8c9; }
+    .header h1 { font-size: 0.9rem; font-weight: 500; color: #8890a8; letter-spacing: 0.08em; }
+    .header .hint { font-size: 0.7rem; color: #4a5070; margin-left: auto; }
+
+    /* Map */
+    #map { flex: 1; }
+
+    /* Elevation panel */
+    .elevation-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      max-width: 92vw;
+      background: #1a1d2eee;
+      backdrop-filter: blur(10px);
+      border: 1px solid #2a2d40;
+      border-radius: 12px;
+      padding: 12px 16px;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      display: none;
+    }
+    .elevation-panel.visible { display: block; }
+    .panel-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    .panel-title { font-size: 0.8rem; color: #8890a8; font-weight: 500; }
+    .panel-close {
+      background: none; border: none; color: #5a6080; font-size: 1rem;
+      cursor: pointer; transition: color 0.2s;
+    }
+    .panel-close:hover { color: #b0b8d0; }
+
+    /* Controls */
+    .controls {
+      display: flex; gap: 0.4rem; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .btn {
+      background: #10121a; border: 1px solid #2a2d40; border-radius: 8px;
+      padding: 0.35rem 0.7rem; color: #8890a8; font-size: 0.72rem;
+      cursor: pointer; font-family: inherit; transition: all 0.2s;
+    }
+    .btn:hover { border-color: #3a4060; color: #c0c8e0; background: #1a1d2e; }
+    .btn.active { background: #1e2238; border-color: #3a5080; color: #c0d0f0; }
+    .btn.danger:hover { border-color: #5a3030; color: #e08080; }
+    .mode-label { font-size: 0.68rem; color: #5a6080; display: flex; align-items: center; gap: 0.3rem; margin-right: 0.4rem; }
+    .mode-label select {
+      background: #10121a; border: 1px solid #2a2d40; border-radius: 6px;
+      color: #8890a8; font-size: 0.68rem; padding: 0.2rem 0.4rem; font-family: inherit;
+    }
+
+    /* Canvas */
+    .profile-canvas { width: 100%; height: 100px; border-radius: 8px; }
+
+    /* Stats */
+    .stats {
+      display: flex; gap: 1rem; margin-top: 6px; font-size: 0.72rem;
+    }
+    .stat { color: #6a7090; }
+    .stat-value { color: #c0c8e0; font-weight: 500; }
+    .stat-gain { color: #80c090; }
+    .stat-loss { color: #c08080; }
+
+    /* Point list */
+    .points-list {
+      margin-top: 6px; max-height: 80px; overflow-y: auto;
+      font-size: 0.7rem; color: #6a7090;
+    }
+    .point-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.2rem 0; border-bottom: 1px solid #1e2030;
+    }
+    .point-item:last-child { border-bottom: none; }
+    .point-elev { color: #8890a8; font-weight: 500; }
+    .point-delete {
+      background: none; border: none; color: #4a3040; cursor: pointer;
+      font-size: 0.8rem; transition: color 0.2s;
+    }
+    .point-delete:hover { color: #e08080; }
+
+    /* Map cursor */
+    .leaflet-container.dropping { cursor: crosshair !important; }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      .elevation-panel { bottom: 10px; padding: 10px 12px; }
+      .controls { gap: 0.3rem; }
+      .btn { padding: 0.3rem 0.5rem; font-size: 0.68rem; }
+      .stats { gap: 0.6rem; font-size: 0.68rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="https://ogsapps.cc">←</a>
+    <h1>📏 ELEVATION</h1>
+    <span class="hint">Click map to add points · Right-click to delete · Drag to move</span>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="elevation-panel" id="panel">
+    <div class="panel-header">
+      <span class="panel-title">Route Profile</span>
+      <button class="panel-close" id="btn-close">✕</button>
+    </div>
+    <div class="controls">
+      <span class="mode-label">Mode:
+        <select id="mode-select">
+          <option value="single">Single segment</option>
+          <option value="multi">Multi-point</option>
+        </select>
+      </span>
+      <button class="btn" id="btn-undo">⌫ Undo</button>
+      <button class="btn danger" id="btn-clear">🗑️ Clear</button>
+      <button class="btn" id="btn-gpx">💾 GPX</button>
+      <label class="btn">📂 Import <input type="file" id="gpx-import" accept=".gpx,.kml" style="display:none"></label>
+    </div>
+    <canvas class="profile-canvas" id="canvas"></canvas>
+    <div class="stats">
+      <span class="stat">↑ <span class="stat-value stat-gain" id="stat-gain">--</span></span>
+      <span class="stat">↓ <span class="stat-value stat-loss" id="stat-loss">--</span></span>
+      <span class="stat">Min: <span class="stat-value" id="stat-min">--</span></span>
+      <span class="stat">Max: <span class="stat-value" id="stat-max">--</span></span>
+      <span class="stat">Dist: <span class="stat-value" id="stat-dist">--</span></span>
+    </div>
+    <div class="points-list" id="points-list"></div>
+  </div>
+
+  <script>
+    const API = 'https://maps.ogsapps.cc';
+    const DEFAULT_CENTER = [49.28, -123.12];
+    const DEFAULT_ZOOM = 12;
+
+    // State
+    const state = {
+      points: [],       // [{latlng, marker, elevation}]
+      line: null,
+      mode: 'single',
+      profileData: [],
+    };
+
+    // Init map
+    const map = L.map('map', {
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
+      zoomControl: true,
+    });
+
+    const tiles = {
+      'Voyager': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, attribution: '&copy; CartoDB',
+      }),
+      'Topo': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17, attribution: '&copy; OpenTopoMap',
+      }),
+      'Satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18, attribution: '&copy; Esri',
+      }),
+    };
+    tiles['Topo'].addTo(map);
+    L.control.layers(tiles, null, { position: 'topright' }).addTo(map);
+
+    // Disable browser context menu
+    map.getContainer().addEventListener('contextmenu', e => e.preventDefault());
+
+    // Make icon
+    function makeIcon(emoji) {
+      return L.divIcon({
+        className: '',
+        html: `<div style="font-size:20px;text-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none">${emoji}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+    }
+
+    // Click to add point
+    map.on('click', e => addPoint(e.latlng));
+
+    function addPoint(latlng) {
+      const marker = L.marker([latlng.lat, latlng.lng], { icon: makeIcon('📍'), draggable: true }).addTo(map);
+
+      const point = { latlng: L.latLng(latlng.lat, latlng.lng), marker, elevation: null };
+      state.points.push(point);
+
+      // Fetch elevation
+      apiGet('/api/elevation', { lat: latlng.lat.toFixed(6), lon: latlng.lng.toFixed(6) })
+        .then(data => {
+          if (data.elevation_m != null) {
+            point.elevation = data.elevation_m;
+            marker.bindPopup(`<b>Elevation:</b> ${data.elevation_m} m<br><small>${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}</small>`);
+          }
+          updatePointsList();
+        });
+
+      // Right-click to delete
+      marker.on('contextmenu', ev => {
+        L.DomEvent.stopPropagation(ev);
+        L.DomEvent.preventDefault(ev);
+        removePoint(point);
+      });
+
+      // Drag to move
+      marker.on('dragend', ev => {
+        point.latlng = ev.target.getLatLng();
+        rebuildLine();
+        rebuildProfile();
+      });
+
+      rebuildLine();
+      rebuildProfile();
+      updatePanel();
+    }
+
+    function removePoint(point) {
+      const idx = state.points.indexOf(point);
+      if (idx === -1) return;
+      state.points.splice(idx, 1);
+      map.removeLayer(point.marker);
+      rebuildLine();
+      rebuildProfile();
+      updatePanel();
+    }
+
+    function rebuildLine() {
+      if (state.line) map.removeLayer(state.line);
+      state.line = null;
+      if (state.points.length >= 2) {
+        const coords = state.points.map(p => p.latlng);
+        state.line = L.polyline(coords, { color: '#ff6b35', weight: 3, dashArray: '8 4' }).addTo(map);
+      }
+    }
+
+    async function rebuildProfile() {
+      if (state.points.length < 2) {
+        state.profileData = [];
+        clearCanvas();
+        updateStats();
+        return;
+      }
+
+      const coords = state.points.map(p => p.latlng);
+
+      if (state.mode === 'single') {
+        // Single segment: profile between first and last
+        await loadProfile(coords[0], coords[coords.length - 1]);
+      } else {
+        // Multi-point: profile for each segment, merge
+        await loadMultiProfile(coords);
+      }
+    }
+
+    async function loadProfile(p1, p2) {
+      const dist = p1.distanceTo(p2);
+      const numPoints = Math.min(Math.max(Math.round(dist / 50), 10), 200);
+      try {
+        const data = await apiGet('/api/elevation/profile', {
+          lat1: p1.lat.toFixed(6), lon1: p1.lng.toFixed(6),
+          lat2: p2.lat.toFixed(6), lon2: p2.lng.toFixed(6),
+          points: numPoints,
+        });
+        state.profileData = data.points || [];
+        drawProfile();
+        updateStats();
+      } catch (e) { /* silent */ }
+    }
+
+    async function loadMultiProfile(coords) {
+      const allPoints = [];
+      for (let i = 0; i < coords.length - 1; i++) {
+        const p1 = coords[i], p2 = coords[i + 1];
+        const dist = p1.distanceTo(p2);
+        const numPoints = Math.min(Math.max(Math.round(dist / 50), 10), 100);
+        try {
+          const data = await apiGet('/api/elevation/profile', {
+            lat1: p1.lat.toFixed(6), lon1: p1.lng.toFixed(6),
+            lat2: p2.lat.toFixed(6), lon2: p2.lng.toFixed(6),
+            points: numPoints,
+          });
+          const pts = data.points || [];
+          // Offset distances for subsequent segments
+          const lastDist = allPoints.length > 0 ? allPoints[allPoints.length - 1].distance_m : 0;
+          pts.forEach(p => {
+            allPoints.push({ ...p, distance_m: p.distance_m + lastDist });
+          });
+        } catch (e) { /* skip segment */ }
+      }
+      state.profileData = allPoints;
+      drawProfile();
+      updateStats();
+    }
+
+    function drawProfile() {
+      const canvas = document.getElementById('canvas');
+      const pts = state.profileData.filter(p => p.elevation_m != null);
+      if (pts.length < 2) { clearCanvas(); return; }
+
+      const minEl = Math.min(...pts.map(p => p.elevation_m));
+      const maxEl = Math.max(...pts.map(p => p.elevation_m));
+      const pad = Math.max((maxEl - minEl) * 0.1, 10);
+      const W = canvas.width = canvas.clientWidth * 2;
+      const H = canvas.height = canvas.clientHeight * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, W, H);
+
+      // Fill
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#2a4a3a');
+      grad.addColorStop(1, '#1a1d2e');
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      pts.forEach((p, i) => {
+        const x = (i / (pts.length - 1)) * W;
+        const y = H - ((p.elevation_m - minEl + pad) / (maxEl - minEl + pad * 2)) * H;
+        ctx.lineTo(x, y);
+      });
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Line
+      ctx.beginPath();
+      pts.forEach((p, i) => {
+        const x = (i / (pts.length - 1)) * W;
+        const y = H - ((p.elevation_m - minEl + pad) / (maxEl - minEl + pad * 2)) * H;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = '#4a8a5a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function clearCanvas() {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function updateStats() {
+      const pts = state.profileData.filter(p => p.elevation_m != null);
+      if (pts.length < 2) {
+        document.getElementById('stat-gain').textContent = '--';
+        document.getElementById('stat-loss').textContent = '--';
+        document.getElementById('stat-min').textContent = '--';
+        document.getElementById('stat-max').textContent = '--';
+        document.getElementById('stat-dist').textContent = '--';
+        return;
+      }
+
+      let gain = 0, loss = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const diff = pts[i].elevation_m - pts[i - 1].elevation_m;
+        if (diff > 0) gain += diff;
+        else loss += Math.abs(diff);
+      }
+
+      const minEl = Math.min(...pts.map(p => p.elevation_m));
+      const maxEl = Math.max(...pts.map(p => p.elevation_m));
+      const totalDist = pts[pts.length - 1].distance_m;
+
+      document.getElementById('stat-gain').textContent = formatElev(gain) + ' m';
+      document.getElementById('stat-loss').textContent = formatElev(loss) + ' m';
+      document.getElementById('stat-min').textContent = formatElev(minEl) + ' m';
+      document.getElementById('stat-max').textContent = formatElev(maxEl) + ' m';
+      document.getElementById('stat-dist').textContent = formatDist(totalDist);
+    }
+
+    function formatElev(m) { return m.toFixed(0); }
+    function formatDist(m) {
+      if (m >= 1000) return (m / 1000).toFixed(1) + ' km';
+      return m.toFixed(0) + ' m';
+    }
+
+    function updatePanel() {
+      const panel = document.getElementById('panel');
+      panel.classList.toggle('visible', state.points.length > 0);
+      updatePointsList();
+    }
+
+    function updatePointsList() {
+      const list = document.getElementById('points-list');
+      if (state.points.length === 0) { list.innerHTML = ''; return; }
+
+      list.innerHTML = state.points.map((p, i) => {
+        const elev = p.elevation != null ? formatElev(p.elevation) + ' m' : '...';
+        return `<div class="point-item">
+          <span>${i + 1}. ${p.latlng.lat.toFixed(4)}, ${p.latlng.lng.toFixed(4)}</span>
+          <span class="point-elev">${elev}</span>
+          <button class="point-delete" onclick="removePointByIndex(${i})">✕</button>
+        </div>`;
+      }).join('');
+    }
+
+    function removePointByIndex(idx) {
+      if (idx >= 0 && idx < state.points.length) {
+        removePoint(state.points[idx]);
+      }
+    }
+
+    // API helper
+    async function apiGet(path, params) {
+      const url = new URL(API + path);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      return res.json();
+    }
+
+    // Button handlers
+    document.getElementById('btn-close').addEventListener('click', () => {
+      clearAll();
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', () => {
+      if (state.points.length > 0) {
+        removePoint(state.points[state.points.length - 1]);
+      }
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', clearAll);
+
+    document.getElementById('mode-select').addEventListener('change', e => {
+      state.mode = e.target.value;
+      rebuildProfile();
+    });
+
+    function clearAll() {
+      state.points.forEach(p => map.removeLayer(p.marker));
+      state.points = [];
+      state.profileData = [];
+      rebuildLine();
+      clearCanvas();
+      updatePanel();
+      updateStats();
+    }
+
+    // GPX export
+    document.getElementById('btn-gpx').addEventListener('click', () => {
+      if (state.points.length < 2) return;
+      const coords = state.points.map(p => p.latlng);
+      let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="OGS Elevation">
+  <trk><trkseg>
+`;
+      coords.forEach(c => {
+        gpx += `    <trkpt lat="${c.lat.toFixed(7)}" lon="${c.lng.toFixed(7)}"></trkpt>\n`;
+      });
+      gpx += `  </trkseg></trk>\n</gpx>`;
+
+      const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'elevation-route.gpx';
+      a.click();
+    });
+
+    // GPX/KML import
+    document.getElementById('gpx-import').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const text = ev.target.result;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/xml');
+
+        // GPX trkpt
+        const trkpts = doc.querySelectorAll('trkpt');
+        if (trkpts.length > 0) {
+          clearAll();
+          trkpts.forEach(pt => {
+            const lat = parseFloat(pt.getAttribute('lat'));
+            const lon = parseFloat(pt.getAttribute('lon'));
+            if (!isNaN(lat) && !isNaN(lon)) addPoint(L.latLng(lat, lon));
+          });
+          return;
+        }
+
+        // KML coordinates
+        const coords = doc.querySelector('coordinates');
+        if (coords) {
+          clearAll();
+          coords.textContent.trim().split(/\s+/).forEach(pair => {
+            const [lon, lat] = pair.split(',').map(Number);
+            if (!isNaN(lat) && !isNaN(lon)) addPoint(L.latLng(lat, lon));
+          });
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    // Make removePointByIndex global
+    window.removePointByIndex = removePointByIndex;
+  </script>
+</body>
+</html>

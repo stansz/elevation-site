@@ -257,11 +257,32 @@
     }
 
     function rebuildLine() {
+      // Remove old line and labels
       if (state.line) map.removeLayer(state.line);
       state.line = null;
+      if (state.lineLabels) state.lineLabels.forEach(l => map.removeLayer(l));
+      state.lineLabels = [];
+
       if (state.points.length >= 2) {
         const coords = state.points.map(p => p.latlng);
         state.line = L.polyline(coords, { color: '#ff6b35', weight: 3, dashArray: '8 4' }).addTo(map);
+
+        // Add distance labels at midpoint of each segment
+        state.lineLabels = [];
+        for (let i = 1; i < coords.length; i++) {
+          const dist = coords[i].distanceTo(coords[i-1]);
+          const midLat = (coords[i].lat + coords[i-1].lat) / 2;
+          const midLng = (coords[i].lng + coords[i-1].lng) / 2;
+          const label = L.marker([midLat, midLng], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="background:#1a1d2eee;color:#c0c8e0;font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid #2a2d40;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.5)">${formatDist(dist)}</div>`,
+              iconAnchor: [25, 10],
+            }),
+            interactive: false,
+          }).addTo(map);
+          state.lineLabels.push(label);
+        }
       }
     }
 
@@ -418,12 +439,22 @@
 
       list.innerHTML = state.points.map((p, i) => {
         const elev = p.elevation != null ? formatElev(p.elevation) + ' m' : '...';
+        const dist = i > 0 ? formatDist(p.latlng.distanceTo(state.points[i-1].latlng)) : '';
         return `<div class="point-item">
           <span>${i + 1}. ${p.latlng.lat.toFixed(4)}, ${p.latlng.lng.toFixed(4)}</span>
-          <span class="point-elev">${elev}</span>
+          <span class="point-elev">${elev}${dist ? ' · → ' + dist : ''}</span>
           <button class="point-delete" onclick="removePointByIndex(${i})">✕</button>
         </div>`;
       }).join('');
+
+      // Show total straight-line distance in stat-dist even before profile loads
+      if (state.profileData.length < 2 && state.points.length >= 2) {
+        let total = 0;
+        for (let i = 1; i < state.points.length; i++) {
+          total += state.points[i].latlng.distanceTo(state.points[i-1].latlng);
+        }
+        document.getElementById('stat-dist').textContent = formatDist(total);
+      }
     }
 
     function removePointByIndex(idx) {

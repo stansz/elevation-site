@@ -257,6 +257,15 @@
         point.latlng = ev.target.getLatLng();
         rebuildLine();
         rebuildProfile();
+        // Immediately update distance from straight-line sum
+        const pts = state.points;
+        if (pts.length >= 2) {
+          let total = 0;
+          for (let i = 1; i < pts.length; i++) {
+            total += pts[i].latlng.distanceTo(pts[i-1].latlng);
+          }
+          document.getElementById('stat-dist').textContent = formatDist(total);
+        }
       });
 
       rebuildLine();

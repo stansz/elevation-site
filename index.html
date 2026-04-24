@@ -90,10 +90,23 @@
     .stats {
       display: flex; gap: 1rem; margin-top: 6px; font-size: 0.72rem;
     }
-    .stat { color: #6a7090; }
+    .stat { color: #6a7090; cursor: help; position: relative; }
     .stat-value { color: #c0c8e0; font-weight: 500; }
     .stat-gain { color: #80c090; }
     .stat-loss { color: #c08080; }
+    .stat:hover .stat-tooltip { opacity: 1; visibility: visible; }
+    .stat-tooltip {
+      position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: #1a1d2e; border: 1px solid #2a2d40; border-radius: 6px;
+      padding: 4px 8px; font-size: 0.65rem; color: #8890a8;
+      white-space: nowrap; pointer-events: none;
+      opacity: 0; visibility: hidden; transition: opacity 0.2s;
+      z-index: 10;
+    }
+    .stat-tooltip::after {
+      content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 4px solid transparent; border-top-color: #2a2d40;
+    }
 
     /* Point list */
     .points-list {
@@ -141,8 +154,8 @@
     <div class="controls">
       <span class="mode-label">Mode:
         <select id="mode-select">
-          <option value="single">Single segment</option>
-          <option value="multi">Multi-point</option>
+          <option value="single">Direct line (A→B)</option>
+          <option value="multi">Via points (all segments)</option>
         </select>
       </span>
       <button class="btn" id="btn-undo">⌫ Undo</button>
@@ -152,11 +165,16 @@
     </div>
     <canvas class="profile-canvas" id="canvas"></canvas>
     <div class="stats">
-      <span class="stat">↑ <span class="stat-value stat-gain" id="stat-gain">--</span></span>
-      <span class="stat">↓ <span class="stat-value stat-loss" id="stat-loss">--</span></span>
-      <span class="stat">Min: <span class="stat-value" id="stat-min">--</span></span>
-      <span class="stat">Max: <span class="stat-value" id="stat-max">--</span></span>
-      <span class="stat">Dist: <span class="stat-value" id="stat-dist">--</span></span>
+      <span class="stat">↑ <span class="stat-value stat-gain" id="stat-gain">--</span>
+        <span class="stat-tooltip">Total elevation gain (sum of all uphill segments)</span></span>
+      <span class="stat">↓ <span class="stat-value stat-loss" id="stat-loss">--</span>
+        <span class="stat-tooltip">Total elevation loss (sum of all downhill segments)</span></span>
+      <span class="stat">▼ <span class="stat-value" id="stat-min">--</span>
+        <span class="stat-tooltip">Lowest elevation on the route (min point)</span></span>
+      <span class="stat">▲ <span class="stat-value" id="stat-max">--</span>
+        <span class="stat-tooltip">Highest elevation on the route (max point)</span></span>
+      <span class="stat">↔ <span class="stat-value" id="stat-dist">--</span>
+        <span class="stat-tooltip">Total route distance (along the path, including curves)</span></span>
     </div>
     <div class="points-list" id="points-list"></div>
   </div>
@@ -349,7 +367,18 @@
     function drawProfile() {
       const canvas = document.getElementById('canvas');
       const pts = state.profileData.filter(p => p.elevation_m != null);
-      if (pts.length < 2) { clearCanvas(); return; }
+      if (pts.length < 2) {
+        // Show placeholder silhouette text
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.clientWidth * 2 || 800;
+        canvas.height = canvas.clientHeight * 2 || 160;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#2a2d40';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⏳', canvas.width/2, canvas.height/2 + 8);
+        return;
+      }
 
       const minEl = Math.min(...pts.map(p => p.elevation_m));
       const maxEl = Math.max(...pts.map(p => p.elevation_m));
@@ -413,6 +442,7 @@
 
       const minEl = Math.min(...pts.map(p => p.elevation_m));
       const maxEl = Math.max(...pts.map(p => p.elevation_m));
+      // Use profile distance (follows the sampled path) for accuracy
       const totalDist = pts[pts.length - 1].distance_m;
 
       document.getElementById('stat-gain').textContent = formatElev(gain) + ' m';
